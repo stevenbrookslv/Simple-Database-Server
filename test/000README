@@ -1,0 +1,9 @@
+Some scripts to test the API.
+
+Note - these are only tests and not useful for anything real.
+
+To actually use the API - the web interface would do these web requests.
+
+These are just to separate out the work of the GUI from the API for testing.
+
+Actual updates will come from angularjs (and be in javascript)

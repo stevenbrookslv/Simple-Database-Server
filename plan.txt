@@ -1,0 +1,22 @@
+/<apiname>/
+	GET -> get every item in table
+	POST -> add new item to table
+
+/<apiname>/<int:post_id>
+	GET -> get a specific item from table (by id only)
+	PUT -> edit a specific item from table (by id only)
+	DELETE -> delete a specific item from table (by id only)
+
+/<apiname>/RANGESEARCH/<int:begRange>/<int:endRange>
+	GET -> get list of items from table in specified range
+	DELETE -> delete list of items from table in specified range
+
+/<apiname>/COUNTSEARCHFORWARD/<int:beg>/<int:count>
+	GET -> get list of items starting at beg, plus following rows up to count
+
+/<apiname>/COUNTSEARCHBACK/<int:end>/<int:count>
+	GET -> get list of items ending at end, plus previous rows up to count
+
+/<apiname>/NAMESEARCH/<str:colToSearch>/<str:searchTerm>
+	GET -> get specific items from table in that matchname
+	DELETE -> delete specific item from table that match name

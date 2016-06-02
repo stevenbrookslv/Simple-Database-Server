@@ -1,0 +1,27 @@
+#!/usr/bin/python3
+
+# Create a record in the database...
+
+import simplejson
+import httplib2
+import sys
+import random
+
+h = httplib2.Http()
+newName = "testguy" + str(random.randint(1,99999999))
+price = random.randint(1,99999)
+url = "http://10.2.7.85:8080/device/"
+rec = {'pid' : newName, 'cost' : price, 'eol_ann' : '1964-10-20'}
+
+
+resp, content = h.request(
+  uri=url,
+  method='POST',
+  headers={'Content-Type': 'application/json; charset=UTF-8', 'key': 'c8001d6e-247b-48c6-a1bc-105951002ae9'},
+  body=simplejson.dumps(rec),
+)
+if resp['status'] != '200':
+  print("FAILURE - status = [%s]" % resp['status'])
+else:
+  rec = simplejson.loads(content)
+  print("SUCCESS!  New id = %s" % rec['id'])

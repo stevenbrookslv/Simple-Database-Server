@@ -1,0 +1,18 @@
+#!/usr/bin/python3
+
+# Get all the records
+
+import simplejson
+import httplib2
+import sys
+
+url = "http://10.2.7.85:8080/device"
+
+h = httplib2.Http()
+resp, content = h.request(url, "GET", headers={'Content-Type': 'application/json; charset=UTF-8', 'key': 'c8001d6e-247b-48c6-a1bc-105951002ae9'})
+if (resp['status'] == '200'):
+  recs = simplejson.loads(content)
+  for rec in recs:
+    print("id=%s, pid=%s" % (rec['id'], rec['pid']))
+else:
+  print("Status=[%s], fail" % resp['status'])
