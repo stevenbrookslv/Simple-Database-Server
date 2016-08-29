@@ -56,7 +56,7 @@ def get_range(db,beg,end,tname,fields):
 		query = query+key+", "
 	query = query[:-2]
 	query = query+" FROM "+tname+" WHERE id between " + str(beg) + " AND " + str(end) + " ORDER BY id;"
-	print(query)
+	#print(query)
 	cursor.execute(query)
 	
 	recs = []
@@ -87,7 +87,7 @@ def get_count_forward(db,start,count,tname,fields):
 		query = query+key+", "
 	query = query[:-2]
 	query = query+" FROM "+tname+" WHERE id > " + str(start) + " LIMIT " + str(count)
-	print(query)
+	#print(query)
 	cursor.execute(query)
 	
 	recs = []
@@ -115,7 +115,7 @@ def get_count_back(db,start,count,tname,fields):
 		query = query+key+", "
 	query = query[:-2]
 	query = query + " FROM " + tname + " WHERE id < " + str(start) + " ORDER BY id DESC LIMIT " + str(count) + ") AS id ORDER BY id ASC;"
-	print(query)
+	#print(query)
 	cursor.execute(query)
 	
 	recs = []
@@ -143,7 +143,7 @@ def getSpecItem(db,col,desItem,tname,fields):
 		query = query+key+", "
 	query = query[:-2]
 	query = query+" FROM " + tname + " WHERE " + col + " = \"" + desItem + "\""
-	print(query)
+	#print(query)
 	cursor.execute(query)
 	
 	recs = []
@@ -185,11 +185,12 @@ def update_record(db, nid, content, fields, tname):
 					upd = upd+key+"=\'"+str(content.get(key))+"\', "
 		upd = upd[:-2]
 		upd = upd+" WHERE id="+str(nid)+";"
-		print(upd)
+		#print(upd)
 
 	cursor = db.cursor()
 	try:
 		cursor.execute(upd)
+		cursor.commit()
 		cursor.close()
 		return simplejson.dumps({"id":nid}),200
 	except:
@@ -225,6 +226,35 @@ def create_record(db, content, fields, tname):
 		cursor.close()
 		return simplejson.dumps({"id" : 0}), 204
 
+def getMaxId(db, tName):
+	query = "SELECT id from " + tName + " ORDER BY id DESC LIMIT 1;"
+	#print(query)
+	cursor = db.cursor(buffered=True)
+	try:	
+		cursor.execute(query)
+		for row in cursor:
+			id = row[0]
+		cursor.close()
+		return simplejson.dumps({"lastId": id}), 200
+	except:
+		cursor.close()
+		return simplejson.dumps({"lastId": "null"}), 204
+
+def getMinId(db, tName):
+	query = "SELECT id from " + tName + " LIMIT 1;"
+	#print(query)
+	cursor = db.cursor(buffered=True)
+	try:	
+		cursor.execute(query)
+		for row in cursor:
+			id = row[0]
+		cursor.close()
+		return simplejson.dumps({"firstId": id}), 200
+	except:
+		cursor.close()
+		return simplejson.dumps({"firstId": "null"}), 204
+
+
 #called by routeMaker class, does the routing for a given
 #dataModel object
 def defineBlueprint(name,use,keys):
@@ -239,6 +269,7 @@ def defineBlueprint(name,use,keys):
 			elif request.method == 'POST':
 				content = request.json
 				js, status = create_record(use.db, content, use.fields, use.tableName)
+				use.db.commit()
 				return Response(js, mimetype="application/json"), status
 			else:
 				return "Unknown type"
@@ -254,12 +285,36 @@ def defineBlueprint(name,use,keys):
 			elif request.method == 'PUT':
 				content = request.json
 				js, status = update_record(use.db, post_id, content, use.fields, use.tableName)
+				use.db.commit()
 				return Response(js, mimetype="application/json"), status
 			elif request.method == 'DELETE':
 				status = delete_record(use.db, post_id, use.tableName)
+				use.db.commit()
 				return "", status
 			else:
 				return "Got an unknown method id=%d" % post_id
+		else:
+			return "Invalid api key sent \"" + str(sentKey) + "\"",401
+	@base.route('/MINID', methods=['GET'])
+	def minId():
+		sentKey = request.headers.get('key')
+		if not keys or sentKey in keys.values():
+			if request.method == 'GET':
+				js, status = getMinId(use.db, use.tableName)
+				return Response(js, mimetype="application/json"), status
+			else:
+				return "Unknown type"
+		else:
+			return "Invalid api key sent \"" + str(sentKey) + "\"",401
+	@base.route('/MAXID', methods=['GET'])
+	def maxId():
+		sentKey = request.headers.get('key')
+		if not keys or sentKey in keys.values():
+			if request.method == 'GET':
+				js, status = getMaxId(use.db, use.tableName)
+				return Response(js, mimetype="application/json"), status
+			else:
+				return "Unknown type"
 		else:
 			return "Invalid api key sent \"" + str(sentKey) + "\"",401
 	@base.route('/RANGESEARCH/<int:beg_search>/<int:end_search>', methods=['GET'])
@@ -282,7 +337,7 @@ def defineBlueprint(name,use,keys):
 		sentKey = request.headers.get('key')
 		if not keys or sentKey in keys.values():
 			if request.method == 'GET':
-				if desired > 0 and lowestNum > 0:
+				if desired > 0 and lowestNum >= 0:
 					js, status = get_count_forward(use.db,lowestNum,desired,use.tableName,use.fields)
 					return Response(js, mimetype="application/json"), status
 				else:
@@ -297,7 +352,7 @@ def defineBlueprint(name,use,keys):
 		sentKey = request.headers.get('key')
 		if not keys or sentKey in keys.values():
 			if request.method == 'GET':
-				if desired > 0 and lowestNum > 0:
+				if desired > 0 and lowestNum >= 0:
 					js, status = get_count_back(use.db,lowestNum,desired,use.tableName,use.fields)
 					return Response(js, mimetype="application/json"), status
 				else:
