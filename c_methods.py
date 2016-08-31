@@ -1,6 +1,7 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 from flask import request, Response, Blueprint
 import configparser
+import hashlib
 import uuid
 import re,os,sys
 import simplejson
@@ -185,12 +186,11 @@ def update_record(db, nid, content, fields, tname):
 					upd = upd+key+"=\'"+str(content.get(key))+"\', "
 		upd = upd[:-2]
 		upd = upd+" WHERE id="+str(nid)+";"
-		#print(upd)
+		print(upd)
 
 	cursor = db.cursor()
 	try:
 		cursor.execute(upd)
-		cursor.commit()
 		cursor.close()
 		return simplejson.dumps({"id":nid}),200
 	except:
@@ -257,44 +257,66 @@ def getMinId(db, tName):
 
 #called by routeMaker class, does the routing for a given
 #dataModel object
-def defineBlueprint(name,use,keys):
+def defineBlueprint(robj, name,use,keys):
 	base = Blueprint(name,__name__,url_prefix="/base")
 	@base.route('/', methods=['GET', 'POST'])
 	def noSpec():
-		sentKey = request.headers.get('key')
-		if not keys or sentKey in keys.values():
-			if request.method == 'GET':
-				js, status = get_device2(use.db, None, use.tableName, use.fields)
-				return Response(js, mimetype="application/json"), status
-			elif request.method == 'POST':
-				content = request.json
-				js, status = create_record(use.db, content, use.fields, use.tableName)
-				use.db.commit()
-				return Response(js, mimetype="application/json"), status
+		if request.method == 'GET':
+			js, status = get_device2(use.db, None, use.tableName, use.fields)
+			return Response(js, mimetype="application/json"), status
+		elif(robj.secW and request.method == "POST"):
+			if (request.json and "keys" in request.json):
+				sentKey = request.json["keys"]
+				if robj.checkUser(sentKey["username"], sentKey["password"]):
+					content = request.json["data"]
+					js, status = create_record(use.db, content, use.fields, use.tableName)
+					use.db.commit()
+					return Response(js, mimetype="application/json"), status
+				else:
+					return "Invalid api key sent \"" + str(sentKey) + "\"",401
 			else:
-				return "Unknown type"
+				return "This method requires a json user and password to be sent",401
+		elif(request.method == "POST"):
+			content = request.json
+			js, status = create_record(use.db, content, use.fields, use.tableName)
+			use.db.commit()
+			return Response(js, mimetype="application/json"), status
 		else:
-			return "Invalid api key sent \"" + str(sentKey) + "\"",401
+			return "Unknown type", 405
 	@base.route('/<int:post_id>', methods=['GET', 'PUT', 'DELETE'])
 	def spec(post_id):
-		sentKey = request.headers.get('key')
-		if not keys or sentKey in keys.values():
-			if request.method == 'GET':
-				js, status = get_device2(use.db, post_id, use.tableName, use.fields)
-				return Response(js, mimetype="application/json"), status
-			elif request.method == 'PUT':
-				content = request.json
-				js, status = update_record(use.db, post_id, content, use.fields, use.tableName)
-				use.db.commit()
-				return Response(js, mimetype="application/json"), status
-			elif request.method == 'DELETE':
-				status = delete_record(use.db, post_id, use.tableName)
-				use.db.commit()
-				return "", status
-			else:
-				return "Got an unknown method id=%d" % post_id
+		if request.method == 'GET':
+			js, status = get_device2(use.db, post_id, use.tableName, use.fields)
+			return Response(js, mimetype="application/json"), status
+		elif(robj.secW and (request.method == 'PUT' or request.method == 'DELETE')):
+			if (request.json and "keys" in request.json):
+				sentKey = request.json["keys"]
+				if robj.checkUser(sentKey["username"],  sentKey["password"]):
+					if request.method == 'PUT':
+						content = request.json["data"]
+						print(content)
+						js, status = update_record(use.db, post_id, content, use.fields, use.tableName)
+						use.db.commit()
+						return Response(js, mimetype="application/json"), status
+					elif request.method == 'DELETE':
+						status = delete_record(use.db, post_id, use.tableName)
+						use.db.commit()
+						return "", status
+				else:
+					return "Invalid api key sent\"" + str(sentKey) + "\"",401
+			
+			return "This method requires a user and password to be sent", 401
+		elif request.method == 'PUT':
+			content = request.json
+			js, status = update_record(use.db, post_id, content, use.fields, use.tableName)
+			use.db.commit()
+			return Response(js, mimetype="application/json"), status
+		elif request.method == 'DELETE':
+			status = delete_record(use.db, post_id, use.tableName)
+			use.db.commit()
+			return "", status
 		else:
-			return "Invalid api key sent \"" + str(sentKey) + "\"",401
+			return "Got an unknown method id=%d" % post_id
 	@base.route('/MINID', methods=['GET'])
 	def minId():
 		sentKey = request.headers.get('key')
@@ -409,11 +431,12 @@ class dataModel:
 #used to set up where to access API (/<something>), doing this by defining 
 #where specific queries in mysql should go.
 class routeMaker:
-	def __init__(self,mod,pName,ap):
+	def __init__(self,mod,pName,ap,secureWrites = False):
 		self.model = mod	#db info
 		self.pathName = "/" + pName	#pathname api will be accessed from
 		self.app = ap	#flask object to access serving features
 		#create apiUser key cfg file if one doesnt exist
+		self.secW = secureWrites;
 		self.keys={}	#dictionary to hold users qualified to access api
 		self.keyFileName = pName+".cfg"
 		if(not os.path.exists(self.keyFileName)):
@@ -424,21 +447,25 @@ class routeMaker:
 			keyConfig = configparser.ConfigParser()
 			keyConfig.optionxform=str
 			keyConfig.read(self.keyFileName)
-			for user in keyConfig.options("users"):
-				self.keys[user] = keyConfig.get("users",user)
-		#Define how api is to be reached/register path
-		self.name = defineBlueprint(self.pathName,self.model,self.keys)
+		for user in keyConfig.options("users"):
+			self.keys[user] = keyConfig.get("users",user)
+			#Define how api is to be reached/register path
+		self.name = defineBlueprint(self, self.pathName,self.model,self.keys)
 		self.app.register_blueprint(self.name,url_prefix=self.pathName)
-
-
-	def addUser(self,newApiUser):
-		#use newApiUser as key
-		#create a random uuid associated with new user
-		self.keyFile = open(self.keyFileName,'a+')
-		newUser = newApiUser
-		apiKey = str(uuid.uuid4())
-		#dont want to define new user if already in cfg file
-		if newUser not in self.keys:
-			self.keys[newUser] = apiKey
-			self.keyFile.write(newUser + " = " + apiKey + "\n")
-		self.keyFile.close()
+	
+	def updateUsers(self):
+		keyConfig = configparser.ConfigParser()
+		keyConfig.optionxform=str
+		keyConfig.read(self.keyFileName)
+		for user in keyConfig.options("users"):
+			self.keys[user] = keyConfig.get("users",user)
+	
+	def checkUser(self, user, pwd):
+		self.updateUsers()
+		if(user in self.keys):
+			userPwdStored = self.keys[user]	
+			userPwd,userSalt = userPwdStored.split("-")	#getting userPwd after hash, and salt to hash old password
+			enteredPwd = hashlib.sha512(userSalt.encode() + pwd.encode()).hexdigest()	#hashing entered password with salt
+			if(enteredPwd == userPwd):
+				return True
+		return False
