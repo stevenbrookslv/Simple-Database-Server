@@ -1,44 +1,41 @@
 #/usr/bin/env python3
 #functions for managing permissions on routes
+import uuid
+import hashlib
+import sqlite3
 
 class userManage:
 	def __init__(self,routeObject):
 		self.routeObj = routeObject
 
 	def delUser(self, userToDelete):
-		keyFile = open(self.routeObj.keyFileName,'r+')
-		delTemp = ""
-		fileStrings = keyFile.readlines()
-		for line in fileStrings:
-			print(line)
-			try:	
-				#need this to handle file header
-				user,eq,pw = line.split(" ")
-				if(userToDelete == user):
-					delTemp = line
-					break
-			except:	
-				#just skip this loop
-				continue
-		keyFile.seek(0)
-		for line in fileStrings:
-			if delTemp != line:
-				keyFile.write(line)
-		keyFile.truncate()
-		keyFile.close()
+		#deletes a user
+		cursor = self.routeObj.dbFile.cursor()
+		que = "DELETE FROM users WHERE name=\"" + userToDelete + "\""
+		cursor.execute(que)
+		self.routeObj.dbFile.commit()
+		cursor.close()
 
 	def printUsers(self):
-		print(self.routeObj.keys)
-	
+		cursor = self.routeObj.dbFile.cursor()
+		cursor.execute("SELECT * FROM users")
+		iterUsers = cursor.fetchall()
+		for row in iterUsers:
+			print(row)
+		cursor.close()
+
 	def addUser(self,newApiUser,newApiPwd):
 		#use newApiUser as username
 		#create a salted hash associated with new user password
-		keyFile = open(self.routeObj.keyFileName,'a+')
+		cursor = self.routeObj.dbFile.cursor()
 		newUser = newApiUser
-		apiKeySalt = uuid.uuid4().hex
-		#dont want to define new user if already in cfg file
-		if newUser not in self.routeObj.keys:
+		que = "SELECT name FROM users WHERE name=\"" + newUser + "\""
+		cursor.execute(que)
+		test = cursor.fetchone();
+		if(test == None):
+			apiKeySalt = uuid.uuid4().hex
+			#dont want to define new user if already in cfg file
 			apiKey = hashlib.sha512(apiKeySalt.encode() + newApiPwd.encode()).hexdigest() + "-" + apiKeySalt
-			self.routeObj.keys[newUser] = apiKey
-			keyFile.write(newUser + " = " + apiKey + "\n")
-		keyFile.close()
+			useUpdQue = "INSERT INTO users VALUES(\"" + newApiUser + "\", \"" + apiKey + "\", 0, 1)"
+			cursor.execute(useUpdQue)
+			self.routeObj.dbFile.commit()
