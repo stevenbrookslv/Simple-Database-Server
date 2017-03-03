@@ -1,4 +1,7 @@
 # Simple-Database-Server
+
+#Not currently working on this, while it is good for a very simple backend, and probably has some potential with lots of work, have to much going on and more interesting projects to work on at the moment. 
+
 All that is needed to set up a simple backend for any mysql database is a dictionary with the columns of the database, example-
 fields = {
 	'id': None,
